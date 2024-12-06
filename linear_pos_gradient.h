@@ -17,17 +17,20 @@ class LinearPosGradient : public GShader {
 public:
 
     /* constructor*/
-    LinearPosGradient(GPoint p0, GPoint p1, const GColor* colorArgs, const float* pointArgs, int count) : p0(p0), p1(p1), numColors(count) {
-        opaque = true;
-
+    LinearPosGradient(GPoint p0, GPoint p1, const GColor* colorArgs, const float* pointArgs, int count) : numColors(count) {
+        // create matrix to turn (p0, p1) vector into (0,1)
         float dx = p1.x - p0.x;
         float dy = p1.y - p0.y;
         mx = GMatrix(dx, -dy, p0.x, dy, dx, p0.y);
 
+        opaque = true;
+
+        // add colors and stops to vectors
         for (int i = 0; i < count; i++) {
             colors.push_back(colorArgs[i]);
             stops.push_back(pointArgs[i]);
-            
+
+            // determine opacity
             if (colorArgs[i].a < 1) {
                 opaque = false;
             }
@@ -81,6 +84,7 @@ public:
             return numColors-2;
         }
 
+        // search for colors
         for (int i = 0; i < numColors-1; i++) {
             if ((x >= stops[i]) && (x < stops[i+1])) {
                 return i;
@@ -111,9 +115,6 @@ private:
 
     GMatrix mx;
     GMatrix inv;
-
-    GPoint p0;
-    GPoint p1;
 
     std::vector<GColor> colors;
     std::vector<float> stops;
