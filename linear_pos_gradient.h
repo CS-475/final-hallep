@@ -1,5 +1,5 @@
-#ifndef VERONOI_SHADER
-#define VERONOI_SHADER
+#ifndef LINEAR_POS_GRADIENT
+#define LINEAR_POS_GRADIENT
 
 #include "shader.h"
 #include "blend.h"
@@ -9,23 +9,25 @@
 #include "include/GShader.h"
 #include "include/GMatrix.h"
 
-#include <cmath>
 #include <vector>
 #include <iostream>
 
-class VeronoiShader : public GShader {
+class LinearPosGradient : public GShader {
 
 public:
 
-    /* constructor */
-    VeronoiShader(const GPoint* pointArgs, const GColor* colorArgs, int count) : numColors(count) {
+    /* constructor*/
+    LinearPosGradient(GPoint p0, GPoint p1, const GColor* colorArgs, const float* pointArgs, int count) : p0(p0), p1(p1), numColors(count) {
         opaque = true;
-        inv = GMatrix();
+
+        float dx = p1.x - p0.x;
+        float dy = p1.y - p0.y;
+        mx = GMatrix(dx, -dy, p0.x, dy, dx, p0.y);
 
         for (int i = 0; i < count; i++) {
-            points.push_back(pointArgs[i]);
             colors.push_back(colorArgs[i]);
-
+            stops.push_back(pointArgs[i]);
+            
             if (colorArgs[i].a < 1) {
                 opaque = false;
             }
@@ -39,9 +41,11 @@ public:
 
     /* setContext() */
     bool setContext(const GMatrix& ctm) {
+        GMatrix to_invert = ctm * mx;
+
         // if invertible
-        if (ctm.invert().has_value()) {
-            inv = ctm.invert().value();
+        if (to_invert.invert().has_value()) {
+            inv = to_invert.invert().value();
             return true;
         }
 
@@ -54,32 +58,36 @@ public:
         mapRow(x, y, count, mapped);
 
         for (int i = 0; i < count; i++) {
-            GColor closest = closestColor(mapped[i]);
-            row[i] = convertColor2Pixel(closest);
+            float mX = mapped[i].x;
+            int index = lowerIndex(mX);
+
+            float range = stops[index+1] - stops[index];
+            float t = (mX - stops[index]) / range;
+
+            GColor thisColor = (colors[index] * (1 - t)) + (colors[index+1] * t);
+            row[i] = convertColor2Pixel(thisColor);
         }
     }
 
-    /* closestColor() */
-    GColor closestColor(GPoint p) {
-        float minDist = distance(p, points[0]);
-        int index = 0;
-
-        for (int i = 1; i < numColors; i++) {
-            float dist = distance(p, points[i]);
-            if (dist < minDist) {
-                minDist = dist;
-                index = i;
-            }   
+    /* lowerIndex() */
+    int lowerIndex(float x) {
+        // clamp below 0
+        if (x < 0) {
+            return 0;
+        }
+        
+        // clamp above 1
+        if (x > 1) {
+            return numColors-2;
         }
 
-        return colors[index];
-    }
+        for (int i = 0; i < numColors-1; i++) {
+            if ((x >= stops[i]) && (x < stops[i+1])) {
+                return i;
+            }
+        }
 
-    /* distance() */
-    float distance(GPoint p0, GPoint p1) {
-        float dx = p0.x - p1.x;
-        float dy = p0.y - p1.y;
-        return sqrt((dx * dx) + (dy * dy));
+        return numColors-2;
     }
 
     /* mapRow() */
@@ -101,11 +109,15 @@ public:
 private:
     bool opaque;
 
+    GMatrix mx;
     GMatrix inv;
 
-    std::vector<GPoint> points;
+    GPoint p0;
+    GPoint p1;
+
     std::vector<GColor> colors;
+    std::vector<float> stops;
     int numColors;
 };
 
-# endif
+#endif
